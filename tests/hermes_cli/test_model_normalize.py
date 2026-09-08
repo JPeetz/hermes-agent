@@ -37,7 +37,38 @@ class TestIssue5211OpenCodeGoDotPreservation:
 # ── Anthropic dot-to-hyphen conversion (regression) ────────────────────
 
 class TestAnthropicDotToHyphen:
-    """Anthropic API still needs dots→hyphens."""
+    """Anthropic API still needs dots→hyphens.
+
+    The dot-to-hyphen branch must only rewrite Claude-family IDs.
+    Non-Claude models routed through an Anthropic-compatible provider
+    (proxies, gateways) use dots as canonical version separators and
+    must pass through unchanged.
+    """
+
+    @pytest.mark.parametrize("model,expected", [
+        ("claude-sonnet-4.6", "claude-sonnet-4-6"),
+        ("claude-3.5-haiku", "claude-3-5-haiku"),
+        ("anthropic/claude-opus-4.1", "claude-opus-4-1"),
+    ])
+    def test_claude_family_still_converts_dots(self, model, expected):
+        assert normalize_model_for_provider(model, "anthropic") == expected
+
+    @pytest.mark.parametrize("model", [
+        "qwen3.5-plus",
+        "minimax-m2.5-free",
+        "glm-4.6",
+        "deepseek-v4-pro",
+        "kimi-k2.5",
+    ])
+    def test_non_claude_models_preserve_dots(self, model):
+        assert normalize_model_for_provider(model, "anthropic") == model
+
+    def test_uppercase_claude_still_converts(self):
+        assert normalize_model_for_provider("Claude-Sonnet-4.6", "anthropic") == "Claude-Sonnet-4-6"
+
+    def test_non_claude_with_vendor_slash_passthrough(self):
+        # a slash-bearing non-Claude id must keep its prefix and its dots
+        assert normalize_model_for_provider("zai/glm-4.6", "anthropic") == "zai/glm-4.6"
 
 
 # ── OpenCode Zen regression ────────────────────────────────────────────
