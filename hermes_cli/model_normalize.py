@@ -229,7 +229,15 @@ def normalize_model_for_provider(model_input: str, target_provider: str) -> str:
 
     if provider in _DOT_TO_HYPHEN_PROVIDERS:
         bare = _strip_matching_provider_prefix(name, provider)
-        return bare if "/" in bare else _dots_to_hyphens(bare)
+        if "/" in bare:
+            return bare
+        # Only normalize dots to hyphens for Claude-family model IDs.
+        # Non-Claude models (e.g. qwen3.5-plus, minimax-m2.5-free) use dots
+        # as canonical version separators and must be preserved when routed
+        # through an Anthropic-compatible provider.
+        if bare.lower().startswith("claude"):
+            return _dots_to_hyphens(bare)
+        return bare
 
     # Copilot's own normalizer knows the alias table (vendor stripping, dash-to-dot repair for Claude)
     # and live-catalog lookups; without it dash-notation Claude ids hit HTTP 400 model_not_supported.
