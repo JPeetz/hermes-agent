@@ -507,10 +507,14 @@ def _safe_path_inside(path: Path, root: Path) -> bool:
 
 
 def _mask_value(value: str) -> str:
-    """Mask a credential value, showing only first and last 3 characters."""
+    """Mask a credential value — reveal at most 4 chars total, 0 exposed for very short values."""
+    if len(value) == 0:
+        return "****"
+    if len(value) <= 4:
+        return "****"  # Don't expose any chars for very short tokens
     if len(value) <= 8:
-        return value[:2] + "***" + value[-2:] if len(value) > 4 else "****"
-    return value[:3] + "*" * (len(value) - 6) + value[-3:]
+        return value[-2:]  # Expose only last 2 chars (vs 4 before)
+    return value[:2] + "*" * (len(value) - 4) + value[-2:]
 
 
 def _find_credentials_file() -> Optional[Path]:
@@ -906,7 +910,7 @@ class _ToolHandlers:
             for line in matches:
                 masked_line = line
                 idx = max(line.find("="), line.find(":"))
-                if idx > -1 and not line.strip().startswith("#") and not line.strip().startswith("-"):
+                if idx > -1:
                     key = line[:idx].strip()
                     val = line[idx + 1:].strip().strip('"').strip("'")
                     masked_val = _mask_value(val)
