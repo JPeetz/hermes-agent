@@ -908,14 +908,16 @@ class _ToolHandlers:
             # Mask credential values (anything after = or :)
             masked = []
             for line in matches:
-                masked_line = line
-                idx = max(line.find("="), line.find(":"))
+                idx_eq = line.find("=")
+                idx_colon = line.find(":")
+                idx = idx_eq if idx_eq > -1 else idx_colon
                 if idx > -1:
-                    key = line[:idx].strip()
-                    val = line[idx + 1:].strip().strip('"').strip("'")
+                    key = line[:idx].strip().lstrip("*#- ")
+                    val = line[idx + 1:].strip().strip('"').strip("'").strip("`")
                     masked_val = _mask_value(val)
                     masked_line = f"{key} = {masked_val}"
-                masked.append(masked_line)
+                    masked.append(masked_line)
+                # Lines without = or : are headings/comments — skip silently
             return json.dumps({
                 "label": label, "match_count": len(matches),
                 "source": str(cred_file), "matches": masked,
