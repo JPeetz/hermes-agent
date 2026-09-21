@@ -900,10 +900,10 @@ def _(rid, params: dict) -> dict:
                 except Exception as e:
                     return _err(rid, 5030, f"slash worker start failed: {e}")
     try:
-        output = worker.run(cmd)
-        if worker.last_seed:
+        output, seed = worker.run(cmd)
+        if seed:
             # /prompt or /compose produced pending_agent_seed — route as next user turn
-            return _ok(rid, {"type": "send", "message": worker.last_seed})
+            return _ok(rid, {"type": "send", "message": seed})
         payload = {"output": output or "(no output)"}
         if warning := _mirror_slash_side_effects(sid, session, cmd):
             payload["warning"] = warning

@@ -85,7 +85,7 @@ def _run(cli: HermesCLI, command: str) -> dict:
     # under the gateway's inherited COLORTERM) would leak raw escapes; strip at this single choke point.
     from tools.ansi_strip import strip_ansi
     output = strip_ansi(buf.getvalue().rstrip())
-    seed = getattr(cli, '_pending_agent_seed', None) or ""
+    seed, cli._pending_agent_seed = getattr(cli, '_pending_agent_seed', None) or "", None
     return {"output": output, "seed": seed}
 
 
