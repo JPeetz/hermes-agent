@@ -321,6 +321,13 @@ def web_search_tool(query: str, limit: int = 5) -> str:
             logger.info("Web search via %s: '%s' (limit: %d)", provider.name, query, limit)
             response_data = _memoized_search(provider, query, limit)
 
+        # Anti-fabrication gate: if the gather produced no real results (empty success or
+        # failure), stamp an explicit no-data marker so the model reports the gap instead
+        # of inventing placeholder data (r/hermesagent-reported; community issue).
+        if provider is not None:
+            from tools.web_tools_gather_gate import gate_search_result
+            response_data = gate_search_result(response_data, provider.name)
+
         debug_call_data["results_count"] = len(response_data.get("data", {}).get("web", []))
         result_json = json.dumps(response_data, indent=2, ensure_ascii=False)
         debug_call_data["final_response_size"] = len(result_json)
@@ -402,6 +409,7 @@ async def web_extract_tool(urls: List[Any], format: str = None, char_limit: Opti
                 )
 
         results = []
+        provider = None
         if safe_urls:
             backend = _get_extract_backend()
             _ensure_web_plugins_loaded()
@@ -421,6 +429,14 @@ async def web_extract_tool(urls: List[Any], format: str = None, char_limit: Opti
         debug_call_data["processing_applied"].append("truncate_and_store")
         _truncate_results(results, _effective_char_limit(char_limit), debug_call_data)
         trimmed = _trim_results(results)
+        # Anti-fabrication gate: web_extract succeeded but produced no usable content
+        # (all entries carry an error / empty content). Stamp a no-data marker so the
+        # model reports the gap instead of inventing page content (community-reported).
+        from tools.web_tools_gather_gate import gate_extract_results
+        _provider_name = provider.name if (safe_urls and provider is not None) else "no provider"
+        gated = gate_extract_results(trimmed, _provider_name)
+        if gated is not None:
+            return json.dumps(gated, indent=2, ensure_ascii=False)
         result_json = (
             json.dumps({"results": trimmed}, indent=2, ensure_ascii=False) if trimmed
             else tool_error("Content was inaccessible or not found")
