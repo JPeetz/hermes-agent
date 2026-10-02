@@ -68,6 +68,20 @@ def gate_extract_results(results: list, provider_name: str) -> Optional[dict]:
     return {"success": False, "results": results, **_marker(reason)}
 
 
+def gate_extract_failure(error_json: str) -> str:
+    """Stamp the gate marker onto an existing serialized extract-failure payload.
+
+    Covers the provider-less paths (search-only backend, strict-selection error,
+    never-configured install) that return a bare ``{"success": false, "error": ...}``
+    before any results exist to gate — the same fabrication invitation the
+    results gate closes.
+    """
+    import json
+    payload = json.loads(error_json)
+    reason = str(payload.get("error") or "No web extract provider resolved")[:500]
+    return json.dumps({**payload, **_marker(reason)}, ensure_ascii=False)
+
+
 def _failure_reason(response_data: dict) -> Optional[str]:
     """Pull the error string from a failed search result, or ``None``."""
     error = response_data.get("error")

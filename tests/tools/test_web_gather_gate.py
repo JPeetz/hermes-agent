@@ -89,6 +89,46 @@ class _FakeProvider:
         return {"success": True, "data": {"web": [], "search": query}}
 
 
+def test_gate_extract_failure_stamps_serialized_payload():
+    out = gate.gate_extract_failure('{"success": false, "error": "search-only backend"}')
+    parsed = json.loads(out)
+    assert parsed["success"] is False
+    assert parsed["error"] == "search-only backend"
+    assert parsed["gather_aborted"] is True
+    assert "do not invent" in parsed["gather_instruction"].lower()
+
+
+def test_web_search_never_configured_emits_gate(tmp_path, monkeypatch):
+    """No provider at all (get_active_search_provider returns None) must still be gated."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setattr(wt, "_get_search_backend", lambda: "tavily")
+    import agent.web_search_registry as reg
+    monkeypatch.setattr(reg, "get_provider", lambda backend: None)
+    monkeypatch.setattr(reg, "get_active_search_provider", lambda: None)
+
+    result = wt.web_search_tool("anything", limit=5)
+    parsed = json.loads(result)
+    assert parsed["success"] is False
+    assert parsed["gather_aborted"] is True
+    assert "no real data" in parsed["gather_instruction"]
+
+
+def test_web_search_strict_selection_emits_gate(tmp_path, monkeypatch):
+    """A stored-but-unregistered selection (strict-selection error) must be gated."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setattr(wt, "_get_search_backend", lambda: "tavily")
+    import agent.web_search_registry as reg
+    monkeypatch.setattr(reg, "get_provider", lambda backend: None)
+    # selection_exists("web") True → the strict-selection path fires.
+    monkeypatch.setattr(wt, "selection_exists", lambda name: name == "web")
+
+    result = wt.web_search_tool("anything", limit=5)
+    parsed = json.loads(result)
+    assert parsed["success"] is False
+    assert parsed["gather_aborted"] is True
+    assert "no real data" in parsed["gather_instruction"]
+
+
 def test_web_search_tool_empty_emits_gate(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
 

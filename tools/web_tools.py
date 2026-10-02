@@ -308,11 +308,13 @@ def web_search_tool(query: str, limit: int = 5) -> str:
         provider = _wsp_get_provider(backend) if backend else None
         if provider is None or not provider.supports_search():
             if provider is None and backend and selection_exists("web"):
-                error_text = debug_call_data["error"] = _strict_selection_error("search", backend)
-                _finish_debug("web_search_tool", debug_call_data)
-                return json.dumps({"success": False, "error": error_text}, indent=2, ensure_ascii=False)
-            # Never-configured install: legacy availability-walked autodetect.
-            provider = get_active_search_provider()
+                error_text = _strict_selection_error("search", backend)
+                debug_call_data["error"] = error_text
+                response_data = {"success": False, "error": error_text}
+            else:
+                # No (or unsupported) selected provider: never-configured install falls
+                # back to the legacy availability-walked autodetect.
+                provider = get_active_search_provider()
 
         if provider is None:
             fallback = "No web search provider configured. Run `hermes tools` to set one up."
@@ -322,11 +324,12 @@ def web_search_tool(query: str, limit: int = 5) -> str:
             response_data = _memoized_search(provider, query, limit)
 
         # Anti-fabrication gate: if the gather produced no real results (empty success or
-        # failure), stamp an explicit no-data marker so the model reports the gap instead
+        # failure — including provider-less failures like never-configured or unregistered
+        # selection), stamp an explicit no-data marker so the model reports the gap instead
         # of inventing placeholder data (r/hermesagent-reported; community issue).
-        if provider is not None:
-            from tools.web_tools_gather_gate import gate_search_result
-            response_data = gate_search_result(response_data, provider.name)
+        from tools.web_tools_gather_gate import gate_search_result
+        provider_label = provider.name if provider is not None else "no provider"
+        response_data = gate_search_result(response_data, provider_label)
 
         debug_call_data["results_count"] = len(response_data.get("data", {}).get("web", []))
         result_json = json.dumps(response_data, indent=2, ensure_ascii=False)
@@ -415,7 +418,11 @@ async def web_extract_tool(urls: List[Any], format: str = None, char_limit: Opti
             _ensure_web_plugins_loaded()
             provider, error_json = _resolve_extract_provider(backend)
             if error_json is not None:
-                return error_json
+                # Provider-less failure (search-only backend, strict-selection, or
+                # never-configured): stamp the anti-fabrication gate before returning so the
+                # model doesn't fill the void with invented page content (community-reported).
+                from tools.web_tools_gather_gate import gate_extract_failure
+                return gate_extract_failure(error_json)
             results = await _extract_safe_urls(provider, safe_urls, format)
         # Reconstruct input order across invalid, blocked, and provider entries (providers preserve
         # the order of the safe URL list they receive).
