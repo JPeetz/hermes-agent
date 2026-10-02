@@ -28,7 +28,14 @@ class _Err(_Ok):
     stderr = "boom: qmd exploded"
 
 
+def _qmd_present():
+    """Context helper: patches QMD_BIN so _run_qmd reaches sp.run()."""
+    return mock.patch.object(qm, "QMD_BIN", "/usr/local/bin/qmd")
+
+
 def _run_ok(stdout):
+    """Patches sp.run to return a successful result with given stdout.
+    Does NOT patch QMD_BIN — caller must also apply _qmd_present()."""
     return mock.patch.object(qm.sp, "run", return_value=type("R", (), {"returncode": 0, "stdout": stdout, "stderr": ""})())
 
 
@@ -48,7 +55,7 @@ def _banner_rows():
 
 
 def test_fast_mode_routes_to_vsearch_and_strips_banner_and_scheme():
-    with _run_ok(_banner_rows()) as sp, mock.patch.object(qm, "QMD_INDEX", "mem"):
+    with _qmd_present(), _run_ok(_banner_rows()) as sp, mock.patch.object(qm, "QMD_INDEX", "mem"):
         out = qm.semantic_search_memory("why did we defer it", n=5, mode="fast")
     args = sp.call_args.args[0]
     # _run_qmd builds: [QMD_BIN, "--index", QMD_INDEX, sub, query, "--json", "-n", n]
@@ -64,7 +71,7 @@ def test_fast_mode_routes_to_vsearch_and_strips_banner_and_scheme():
 
 
 def test_hybrid_mode_routes_to_query():
-    with _run_ok(_banner_rows()) as sp:
+    with _qmd_present(), _run_ok(_banner_rows()) as sp:
         qm.semantic_search_memory("hard lookup", n=3, mode="hybrid")
     args = sp.call_args.args[0]
     assert args[3] == "query"
@@ -72,7 +79,7 @@ def test_hybrid_mode_routes_to_query():
 
 
 def test_default_mode_is_fast():
-    with _run_ok(_banner_rows()) as sp:
+    with _qmd_present(), _run_ok(_banner_rows()) as sp:
         qm.semantic_search_memory("x", n=2)
     assert sp.call_args.args[0][3] == "vsearch"
 
@@ -80,13 +87,13 @@ def test_default_mode_is_fast():
 def test_base_scoping_passes_collection_when_configured():
     qm.QMD_BASES["vault"] = "hermesvault"
     try:
-        with _run_ok(_banner_rows()) as sp:
+        with _qmd_present(), _run_ok(_banner_rows()) as sp:
             qm.semantic_search_memory("x", n=2, base="vault")
         args = sp.call_args.args[0]
         assert "--collection" in args
         assert args[args.index("--collection") + 1] == "hermesvault"
         # "all" / unknown base -> no collection filter
-        with _run_ok(_banner_rows()) as sp2:
+        with _qmd_present(), _run_ok(_banner_rows()) as sp2:
             qm.semantic_search_memory("x", n=2, base="all")
         assert "--collection" not in sp2.call_args.args[0]
     finally:
@@ -100,7 +107,7 @@ def test_missing_qmd_binary_returns_friendly_error():
 
 
 def test_nonzero_exit_returns_qmd_stderr():
-    with mock.patch.object(qm.sp, "run", return_value=_Err()):
+    with _qmd_present(), mock.patch.object(qm.sp, "run", return_value=_Err()):
         out = qm.semantic_search_memory("x", n=2)
     assert "boom: qmd exploded" in out
 
@@ -109,19 +116,19 @@ def test_timeout_returns_actionable_message():
     def _timeout(*a, **k):
         raise qm.sp.TimeoutExpired("qmd", 1)
 
-    with mock.patch.object(qm.sp, "run", side_effect=_timeout):
+    with _qmd_present(), mock.patch.object(qm.sp, "run", side_effect=_timeout):
         out = qm.semantic_search_memory("x", n=2, mode="hybrid")
     assert "timed out" in out
     assert "mode='fast'" in out
 
 
 def test_empty_results_return_no_match_message():
-    with _run_ok("[]"):
+    with _qmd_present(), _run_ok("[]"):
         out = qm.semantic_search_memory("nothing relevant", n=3)
     assert "No relevant results" in out
 
 
 def test_status_reports_ok():
-    with _run_ok("QMD Status\nIndex: /x.sqlite\nSize: 14.5 MB\n"):
+    with _qmd_present(), _run_ok("QMD Status\nIndex: /x.sqlite\nSize: 14.5 MB\n"):
         out = qm.qmd_status()
     assert "QMD Status" in out
