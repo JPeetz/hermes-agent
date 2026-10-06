@@ -52,3 +52,40 @@ describe('runComposerMiddleware', () => {
     expect(await runComposerMiddleware({ text: 'quiet' })).toEqual({ text: 'QUIET' })
   })
 })
+
+describe('COMPOSER_AREAS.tray (plugin SDK accumulation area)', () => {
+  it('exposes a composer.tray render area key', () => {
+    expect(COMPOSER_AREAS.tray).toBe('composer.tray')
+  })
+
+  it('is distinct from the other composer render areas', () => {
+    const renderAreas = new Set([
+      COMPOSER_AREAS.top,
+      COMPOSER_AREAS.bottom,
+      COMPOSER_AREAS.underside,
+      COMPOSER_AREAS.leading,
+      COMPOSER_AREAS.actions,
+      COMPOSER_AREAS.tray
+    ])
+
+    expect(renderAreas.size).toBe(6)
+  })
+
+  it('routes a registered render contribution through the registry by area', () => {
+    expect(registry.getArea(COMPOSER_AREAS.tray)).toHaveLength(0)
+
+    const dispose = registry.register({
+      id: 'deploy-run-row',
+      area: COMPOSER_AREAS.tray,
+      render: () => 'running'
+    })
+
+    const contributions = registry.getArea(COMPOSER_AREAS.tray)
+
+    expect(contributions).toHaveLength(1)
+    expect(contributions[0].id).toBe('deploy-run-row')
+
+    dispose()
+    expect(registry.getArea(COMPOSER_AREAS.tray)).toHaveLength(0)
+  })
+})

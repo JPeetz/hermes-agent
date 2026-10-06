@@ -9,6 +9,11 @@
  *                                                  whole composer (no chrome)
  *                             composer.leading   — inline after the "+" menu
  *                             composer.actions   — inline before the model pill
+ *                             composer.tray      — the session-scoped status
+ *                                                  accumulation tray above the
+ *                                                  input (todos, subagents,
+ *                                                  background rows); plugin rows
+ *                                                  join the same stack/collapse
  *
  *   data kinds (`data`):      composer.middleware    (ComposerMiddleware)
  *                             composer.attachments   (ComposerAttachmentProvider)
@@ -38,7 +43,8 @@ export const COMPOSER_AREAS = {
   attachments: 'composer.attachments',
   microActions: 'composer.microActions',
   atCompletions: 'composer.atCompletions',
-  modelPill: 'composer.modelPill'
+  modelPill: 'composer.modelPill',
+  tray: 'composer.tray'
 } as const
 
 export interface ComposerDraft {

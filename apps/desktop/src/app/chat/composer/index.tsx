@@ -1308,6 +1308,10 @@ export function ChatBar({
               grows upward over the thread and the dock's own measurement covers
               it. Collapses to nothing when every status is empty. */}
           <StatusDrawerContent collapsed={statusDrawerCollapsed} id={statusDrawerId}>
+            {/* Plugin-contributed rows join the SAME tray family as native status
+                rows (todos, subagents, background tasks): same stacking, same
+                collapse behaviour. ContribSlot renders nothing when empty. */}
+            <ContribSlot area={COMPOSER_AREAS.tray} />
             <ComposerStatusStack
               onSubmit={onSubmit}
               queue={
