@@ -57,12 +57,99 @@ def _cmd_memory_reset(args):
     print(f"  Files were in: {display_hermes_home()}/memories/\n")
 
 
+def _cmd_memory_show(args):
+    from hermes_constants import display_hermes_home
+    from tools import memory_tool
+    from tools.memory_tool_store import ENTRY_DELIMITER
+
+    store = memory_tool.load_on_disk_store()
+    target = getattr(args, "target", "all")
+    targets = ["memory", "user"] if target == "all" else [target]
+
+    labels = {"memory": ("MEMORY.md", "agent notes"), "user": ("USER.md", "user profile")}
+    any_output = False
+    for t in targets:
+        entries = store._entries_for(t)
+        filename, desc = labels[t]
+        limit = store._char_limit(t)
+        usage = f"{store._char_count(t):,}/{limit:,}"
+        print(f"\n  ◆ {filename} ({desc}) — {usage} chars, {len(entries)} entr{'y' if len(entries)==1 else 'ies'}")
+        if not store.target_enabled(t):
+            print(f"    (disabled in config.yaml — built-in {t} store writes are off)")
+        if not entries:
+            print("    (empty)")
+            continue
+        any_output = True
+        for i, e in enumerate(entries, 1):
+            for j, line in enumerate(e.split(ENTRY_DELIMITER)):
+                print(f"      [{i}:{j + 1}] {line}")
+    if not any_output:
+        print(f"\n  No built-in memory entries found in {display_hermes_home()}/memories/\n")
+    else:
+        print("\n  Use `hermes memory forget <text> --target <memory|user>` to remove one entry.\n")
+
+
+def _cmd_memory_forget(args):
+    from tools import memory_tool
+
+    store = memory_tool.load_on_disk_store()
+    target = getattr(args, "target", "memory")
+    label = "USER.md" if target == "user" else "MEMORY.md"
+
+    if not store.target_enabled(target):
+        print(f"\n  ✗ {label} store is disabled in config.yaml — nothing removed.\n")
+        return
+
+    old_text = getattr(args, "entry", "")
+    # Resolve the entry under the store lock first so any ambiguity/refusal makes
+    # the confirmation prompt pointless — and so the confirmation names the EXACT
+    # entry that would be removed (#135324 deterministic single-entry remove).
+    resolved = store.resolve_entry(target, old_text, "remove")
+    if not resolved.get("success"):
+        if "Multiple entries matched" in resolved.get("error", ""):
+            matches = resolved.get("matches", [])
+            print(f"\n  ✗ Multiple entries matched. Be more specific:")
+            for m in matches:
+                print(f"      - {m}")
+            print("  Nothing removed.\n")
+        else:
+            print(f"\n  ✗ {resolved.get('error')}\n  Nothing removed.\n")
+        return
+
+    matched = resolved["matched_entry"]
+    print(f"\n  This will permanently remove from {label}:\n      {matched}\n")
+    if not getattr(args, "yes", False):
+        try:
+            answer = input("  Type 'yes' to confirm: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Cancelled.\n")
+            return
+        if answer != "yes":
+            print("  Cancelled.\n")
+            return
+
+    result = store.remove(target, old_text, matched_entry=matched)
+    if not result.get("success"):
+        print(f"\n  ✗ {result.get('error')}\n  Nothing removed.\n")
+        return
+
+    removed = result.get("removed_entry", "")
+    print(f"\n  ✓ Removed one entry from {label}:")
+    if removed:
+        print(f"      {removed}")
+    print(f"  Usage now: {result.get('usage', '')}\n")
+
+
 def cmd_memory(args):
     sub = getattr(args, "memory_command", None)
     if sub == "off":
         _cmd_memory_off()
     elif sub == "reset":
         _cmd_memory_reset(args)
+    elif sub == "show":
+        _cmd_memory_show(args)
+    elif sub == "forget":
+        _cmd_memory_forget(args)
     else:
         from hermes_cli.memory_setup import memory_command
         memory_command(args)
