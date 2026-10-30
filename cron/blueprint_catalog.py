@@ -24,7 +24,38 @@ __all__ = [
     "fill_blueprint",
     "get_blueprint",
     "list_blueprints",
+    "output_language_directive",
 ]
+
+
+def output_language_directive() -> str:
+    """Output-language instruction for a blueprint-created job, or ``""`` for English.
+
+    ``display.language`` localizes the UI, but the prompt stored by ``fill_blueprint`` is
+    hardcoded English — a ``display.language: zh`` profile gets English automated briefs on
+    every run (#141114). This resolves the profile's effective language the same way the
+    catalogs do (env ``HERMES_LANGUAGE`` > config ``display.language`` > ``en``) and returns
+    one directive sentence naming the language; English (the default) emits nothing so
+    default profiles keep byte-identical prompts.
+    """
+    try:
+        from agent.i18n import get_language
+    except Exception:  # pragma: no cover - agent not importable in exotic embeddings
+        return ""
+    lang = get_language()
+    if not lang or lang == "en":
+        return ""
+    endonym = lang
+    try:
+        from agent.i18n_languages import BUNDLED_LANGUAGE_INFO
+        endonym = BUNDLED_LANGUAGE_INFO.get(lang, (lang, False))[0]
+    except Exception:  # pragma: no cover - pack-only language with an unreadable table
+        endonym = lang
+    return (
+        f"\n\nOutput language: write the ENTIRE response in {endonym} ({lang}) — the user's "
+        f"configured display language. Only fall back to English when the requested content "
+        f"has no equivalent (proper names, code)."
+    )
 
 
 class BlueprintFillError(ValueError):
@@ -777,6 +808,11 @@ def fill_blueprint(
         prompt = blueprint.prompt_template.format(**resolved)
     except KeyError as e:
         raise BlueprintFillError(f"blueprint prompt missing value for {e}") from e
+
+    # Anchor the output language of the generated job to the profile's display.language
+    # (#141114): the UI is localized but the stored prompt is English, so a non-English
+    # profile would get English briefs every run. No-op (empty string) for English.
+    prompt += output_language_directive()
 
     spec: dict[str, Any] = {
         "prompt": prompt,
